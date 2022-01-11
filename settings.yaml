@@ -1,0 +1,11 @@
+# Your Twitch Channel
+channel: channel_name_in_lowercase
+# Your Twitch Username
+nickname: your_twitch_username
+# The OAUTH provided is obviously fake...
+oauth_secret: oauth:prau3ol6mg5glgek8m89ec2s9q5i3i
+# How many days would you like to track
+num_days_saved: 30
+# Probably just leave alone :) 
+port: 6667
+server: irc.chat.twitch.tv

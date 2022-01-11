@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Title of page --> 
+    <title>About</title>
+
+    <!-- Import CSS from Flask --> 
+    <link rel="stylesheet" href="{{ url_for('static', filename='about.css') }}">
+
+    <!-- Create top header  --> 
+    <div class="header">
+
+      <!-- LINKS!  --> 
+      <div class="header-right">
+        <a class="active" href="{{ base_url }}\">Home</a>
+        <a class="active" href="{{ base_url }}\mods">Mod Overview</a>
+        <a class="active" href="{{ base_url }}\about">About</a>
+      </div>
+
+      <!-- Create channel name header  --> 
+      <div class="header-logo">{{ channel_name }}</div>
+          <!-- Project logo  --> 
+        <div class="project_logo">Mod-erate Impact</div>
+    </div>
+  </head>
+  <!-- Start of body --> 
+  <br>
+  <br>
+  <body>
+    <!-- About the project --> 
+    <span>
+    <div class="about_project">
+      <center>
+        <h2>About Mod-erate Impact</h2>
+      </center>
+      <!-- Short description --> 
+        <p>&nbsp;&nbsp;&nbsp;&nbsp;This was designed to help Twitch Streamers keep track of their Moderators contributions to their community. I stole the idea from <a class="active" href="https://twitch.tv/venalis/">Venalis</a> when he had stated he was wanting something that did this exact thing. I hope that it will be useful to any streamer looking to keep track of the information provided.</p>
+        <br>
+        <p>Mod-erate Impact works by connecting into <a href="https://dev.twitch.tv/docs/irc/guide/">Twitch's IRC</a>, and logging every message sent back and forth. From there the application will go through the written logs and count the number of times certain information is met, and perform some math to see how long between each message from a particular user was sent. Finally that information is rendered back to you, the user, as a pretty webpage. Almost everything on this page is dynamic in some way shape or form, and changes based on the messages sent within the Twitch Chat, and the settings file.</p>        
+        <br>
+        <p>About the PINGS and the PONGS. As per <a href="https://datatracker.ietf.org/doc/html/rfc1459#section-4.6.2">RFC1459</a>, the PING is used to test for the presence of an active client at the other end of the connection. The PONG is a reply to the PING that states "Yes I am still alive". Hence the fun little banner at the bottom about PINGING and PONGING.</p>
+
+        <span>
+          <div class="about_me">
+            <center><img src="{{ url_for('static', filename='code.png') }}"></center>
+              <center><h2>About The Creator</h2></center>
+              <p>&nbsp;&nbsp;&nbsp;&nbsp;I am just some dude who enjoys programming random stuff in his spare time. This is my second project using Flask and probably my biggest thus far. This is also my first time doing web design like this. This entire project took me about a week to do, on and off in my spare time. </p> 
+              <br>
+              <p> If you like this product and want to commission me to make something for you, feel free to <a href="mailto:stopthatrightmeow7913@gmail.com">contact me</a>! I know a bit about Python, Docker, and a lot of other random stuff, and am quite happy to learn something new if I find it interesting enough. Otherwise if you just want to support me, consider buying me some <a href="https://www.buymeacoffee.com/">coffee</a>.</p>
+              <br>
+              <p>Feel free to checkout some other silly things I've created, and released on my <a href="https://github.com/stopthatrightmeow">GitHub</a>!</p>
+          </div>
+      </span>
+    </div>
+  </span>
+
+  </body>
+  <center><div id="footer">I have PINGED and PONGED {{ pong }} times in the last {{ num_days_tracked }} days.</div></center>
+</html>

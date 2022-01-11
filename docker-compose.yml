@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  twitch_tracker:
+    container_name: moderate_impact
+    image: moderate_impact:1.0
+    networks: 
+      - frontend
+    volumes: 
+      - ./chat_logs/:/app/chat_logs/
+      - ./twitch_tracker.log:/app/twitch_tracker.log
+      - ./settings.yaml:/app/settings.yaml
+      # For keeping track of local time
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+
+    restart: unless-stopped
+    ports:
+      - 8080:8080
+
+networks:
+  frontend:

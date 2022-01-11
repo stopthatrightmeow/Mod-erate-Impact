@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Title of page --> 
+    <title>About</title>
+
+    <!-- Import CSS from Flask --> 
+    <link rel="stylesheet" href="{{ url_for('static', filename='no_data.css') }}">
+
+    <!-- Create top header  --> 
+    <div class="header">
+
+      <!-- LINKS!  --> 
+      <div class="header-right">
+        <a class="active" href="{{ base_url }}\">Home</a>
+        <a class="active" href="{{ base_url }}\mods">Mod Overview</a>
+        <a class="active" href="{{ base_url }}\about">About</a>
+      </div>
+
+      <!-- Create channel name header  --> 
+      <div class="header-logo">{{ channel_name }}</div>
+          <!-- Project logo  --> 
+        <div class="project_logo">Mod-erate Impact</div>
+    </div>
+  </head>
+  <!-- Start of body --> 
+  <br>
+  <br>
+  <body>
+    <div class="no_data">
+      <center>
+      <h1>Not enough data is available.<h1>
+      <p>Please stream in order to generate enough chat data to render this page.</p>
+      </center>
+    </div>
+  </body>
+  <center><div id="footer">I have PINGED and PONGED {{ pong }} times in the last {{ num_days_tracked }} days.</div></center>
+</html>

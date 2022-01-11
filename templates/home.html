@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <!-- Title of page --> 
+        <title>Mod-erate Impact</title>
+
+        <!-- Import CSS from Flask --> 
+        <link rel="stylesheet" href="{{ url_for('static', filename='home.css') }}">
+
+        <!-- Create top header  --> 
+        <div class="header">
+
+        <!-- LINKS!  --> 
+        <div class="header-right">
+            <a class="active" href="{{ base_url }}/">Home</a>
+            <a class="active" href="{{ base_url }}/mods">Mod Overview</a>
+            <a class="active" href="{{ base_url }}/about">About</a>
+        </div>
+
+        <!-- Create channel name header  --> 
+        <div class="header-logo">{{ channel_name }}</div>
+            <!-- Project logo  --> 
+            <div class="project_logo">Mod-erate Impact</div>
+        </div>
+    </head>
+    <!-- Start of body --> 
+    <body>
+        <center>
+        <div class="data_table">
+            <table>
+                <tr>
+                    <th></th>
+                    <th></th>
+                    <th>
+                        <h1>{{ total_messages }}</h1>
+                        <p>Total messages</p>
+                    </th>
+                    <th></th>
+                    <th></th>
+                    <th>
+                        <h1>{{ total_sub_msgs }}</h1>
+                        <p>Total Subscriber Messages</p>
+                    </th>
+                    <th></th>
+                    <th></th>
+                    <th>
+                        <h1>{{ total_non_sub_msgs }}</h1>
+                        <p>Total Non-Subscriber Messages</p>
+                    </th>
+                    <th></th>
+                    <th></th>
+                    <th>
+                        <h1>{{ total_replies }}</h1>
+                        <p>Total Replies</p>
+                    </th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                    <th>
+                        <h1>{{ total_days_tracked }}</h1>
+                        <p>Total Days Tracked</p>
+                    </th>
+                    <th></th>
+                    <th></th>
+                </tr>
+            </table>
+        </div>
+        <div class="gen_stats_table">
+            <table>
+                <tr>
+                    <th><h3>Date</h3></th>
+                    <th><h3>Count</h3></th>
+                </tr>
+                <tr>
+                    {% for key, value in gen_stats.items() %}
+                        <td><p>{{key}}</p></td>
+                        <td><p>{{value}}</p></td>
+                </tr>
+            {% endfor %}
+            </table>
+        </div>
+        </center>
+
+    </body>
+    <center><div id="footer">I have PINGED and PONGED {{ pong }} times in the last {{ num_days_tracked }} days.</div></center>
+</html>
