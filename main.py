@@ -1,3 +1,4 @@
+from gc import get_stats
 import logging
 import socket
 import threading
@@ -5,6 +6,7 @@ import yaml
 import os
 import re
 import pandas as pd
+from apscheduler.schedulers.background import BackgroundScheduler
 from dateutil.parser import parse
 from waitress import serve # Waitress for production server VS Flask
 from os.path import exists
@@ -21,7 +23,7 @@ logger.addHandler(ch)
 fh = logging.FileHandler("./mod-erate_impact.log")
 fh.setFormatter(formatter)
 logger.addHandler(fh)
-logger.setLevel('INFO')
+logger.setLevel('DEBUG')
 
 app = Flask(__name__) 
 
@@ -60,7 +62,7 @@ def chat_tracker(server, port, nickname, secret, channel):
             sock.send(f"PASS {secret}\n".encode('utf-8'))
             sock.send(f"NICK {nickname}\n".encode('utf-8'))
             
-            # Reguired to grab moderator Information
+            # Required to grab moderator Information
             sock.send(f"CAP REQ :twitch.tv/commands \n".encode('utf-8'))
             sock.send(f"CAP REQ :twitch.tv/tags \n".encode('utf-8'))
             # Join Channel
@@ -124,8 +126,9 @@ def get_pongs():
                         total_pongs += 1
                 
         results = str(total_pongs * 2)
+        logger.debug('Got Pongs')
         return results
-
+    
     except Exception as e:
         logger.error(f'Unable to open chat log: {e}')
         results = 'NULL'
@@ -142,8 +145,7 @@ def statistics():
     totals = {'Total Messages': 0, 'Reply Count': 0, 'Total Non-Sub Messages': 0, 'Total Sub Messages': 0, 'Total Days Tracked': 0}
     mod_data = {}
     mod_list = []
-
-
+    
     try:
         """
         This chunk does a few things:
@@ -191,8 +193,8 @@ def statistics():
                         totals['Total Sub Messages'] += 1
                     elif 'subscriber=0' in line and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
                         totals['Total Non-Sub Messages'] += 1
-
             chat_log.close()
+            
     except Exception as e:
         logger.error(f'Unable to find the mods: {e}')
 
@@ -236,7 +238,7 @@ def statistics():
             # Calculate average messages per day
             mod_data[mod]['Average Messages Per Day'] = round(mod_data[mod]['Total Messages Sent'] / total_days_tracked)
 
-            # Shit show, need to fix.
+            # It works, but there probably is a better way to go about it...
             try:
                 time_to_beat = 0
                 for key, value in mod_data[mod]['total_avg_per_day'].items():
@@ -281,7 +283,7 @@ def statistics():
 
         except Exception as e:
             logger.error(f'Unable to calculate averages: {e}')
-
+    logger.debug('Got Statistics')
     return (totals, mod_data)
 
 
@@ -299,7 +301,7 @@ def deltaberg(date1, date2, other=False):
         # Get the time in seconds between two messages
         date_format_str = '%Y-%m-%d %H:%M:%S.%f'
         start = datetime.strptime(date1, date_format_str)
-        end =   datetime.strptime(date2, date_format_str)
+        end = datetime.strptime(date2, date_format_str)
         time_deltas = end - start
         results = time_deltas.total_seconds() 
         return results
@@ -307,7 +309,7 @@ def deltaberg(date1, date2, other=False):
          # Get the time in seconds between two messages
         date_format_str = '%Y-%m-%d'
         start = datetime.strptime(date1, date_format_str)
-        end =   datetime.strptime(date2, date_format_str)
+        end = datetime.strptime(date2, date_format_str)
         time_deltas = end - start
         results = time_deltas.total_seconds() 
         return results
@@ -315,38 +317,42 @@ def deltaberg(date1, date2, other=False):
 ### WEB STUFF ###
 @app.route("/about", methods=['GET'])
 def about_page():
-    conf = read_yaml()
-    pong = get_pongs()
-    data = statistics()
+    global conf
+    global pongs
+    global data
 
     totals = data[0]
-    return render_template('about.html', pong=pong, channel_name=conf['channel'].title(), num_days_tracked=totals['Total Days Tracked'])
+    return render_template('about.html', pong=pongs, channel_name=conf['channel'].title(), num_days_tracked=totals['Total Days Tracked'])
 
 # Home Page
 @app.route("/", methods=['GET'])
 def home_page():
-    conf = read_yaml()
-    pong = get_pongs()
-    data = statistics()
-    totals = data[0]
+    global conf 
+    global pongs  
+    global data 
+    try:
+        totals = data[0]
+        
+        breakdown = {}
+        for key, value in totals.items():
+            if key not in ['Total Sub Messages', 'Total Messages', 'Total Days Tracked', 'Total Non-Sub Messages', 'Reply Count']:
+                breakdown[key] = value
+
+
+        return render_template('home.html', pong=pongs, channel_name=conf['channel'].title(), 
+            total_messages=totals['Total Messages'], total_sub_msgs=totals['Total Sub Messages'],
+            total_non_sub_msgs=totals['Total Non-Sub Messages'], total_days_tracked=totals['Total Days Tracked'], num_days_tracked=totals['Total Days Tracked'],
+            total_replies=totals['Reply Count'], gen_stats=breakdown)
     
-    breakdown = {}
-    for key, value in totals.items():
-        if key not in ['Total Sub Messages', 'Total Messages', 'Total Days Tracked', 'Total Non-Sub Messages', 'Reply Count']:
-            breakdown[key] = value
-
-
-    return render_template('home.html', pong=pong, channel_name=conf['channel'].title(), 
-        total_messages=totals['Total Messages'], total_sub_msgs=totals['Total Sub Messages'],
-        total_non_sub_msgs=totals['Total Non-Sub Messages'], total_days_tracked=totals['Total Days Tracked'], num_days_tracked=totals['Total Days Tracked'],
-        total_replies=totals['Reply Count'], gen_stats=breakdown)
-
+    except Exception as e:
+        logger.error(f'Unable to render home page: {e}')
+    
 # Mod Status Board
 @app.route("/mods", methods=['GET'])
 def moderator():
-    conf = read_yaml()
-    pong = get_pongs()
-    data = statistics()
+    global conf
+    global pongs
+    global data
     totals = data[0]
     mod_stats = data[1]
     try:
@@ -363,16 +369,27 @@ def moderator():
         table = df.to_html(classes='mod_stats', index=True, columns=['Total Messages Sent',  'Average Messages Per Day',  'Days Active', 'Last Active',  'Average Time Between Messages (in mins)'], index_names=True).replace('text-align: right', 'text-align: center').replace('border="1"','border="0"')
         mod_stats=table
 
-        return render_template('mods.html', channel_name=conf['channel'].title(), pong=pong, num_days_tracked=totals['Total Days Tracked'],
+        return render_template('mods.html', channel_name=conf['channel'].title(), pong=pongs, num_days_tracked=totals['Total Days Tracked'],
             mod_stats=table, top_three_talkers=top_three_talkers)
+    
     except KeyError:
-        return render_template('no_data.html', channel_name=conf['channel'].title(), pong=pong, num_days_tracked=totals['Total Days Tracked'])
+        return render_template('no_data.html', channel_name=conf['channel'].title(), pong=pongs, num_days_tracked=totals['Total Days Tracked'])   
 
 if __name__ == "__main__":
     try:
         # Read Settings
         global conf
+        global pongs
+        global data
         conf = read_yaml()
+        pongs = get_pongs()
+        data = statistics()
+        sched = BackgroundScheduler()
+        # RUN EVER 2 MINS instead of every time a refresh happens
+        # No one said I was great at coding :) But it works!
+        sched.add_job(get_pongs, 'interval', seconds=120)
+        sched.add_job(statistics, 'interval', seconds=120)
+        sched.start()   
 
         # Backgrounding the Cleanup Function
         clean_th = threading.Thread(target=cleanup, args=(conf['num_days_saved'],))
@@ -381,8 +398,8 @@ if __name__ == "__main__":
         # Backgrounding the Chat Tracker Function in it's own thread
         chat_th = threading.Thread(target=chat_tracker, args=(conf['server'], conf['port'], conf['nickname'], conf['oauth_secret'], conf['channel']))
         chat_th.start()
-
-        serve(app, host='0.0.0.0', port=8080, threads=6)
+        
+        serve(app, host='0.0.0.0', port=8080, threads=2)
 
     except KeyboardInterrupt:
         exit()
