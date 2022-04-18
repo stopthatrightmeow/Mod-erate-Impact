@@ -1,4 +1,4 @@
-from gc import get_stats
+from dataclasses import dataclass
 import logging
 import socket
 import threading
@@ -6,7 +6,6 @@ import yaml
 import os
 import re
 import pandas as pd
-from apscheduler.schedulers.background import BackgroundScheduler
 from dateutil.parser import parse
 from waitress import serve # Waitress for production server VS Flask
 from os.path import exists
@@ -20,6 +19,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch = logging.StreamHandler()
 ch.setFormatter(formatter)
 logger.addHandler(ch)
+logger.propagate = False # Apparently fixed my double logging (in console) issue...
 fh = logging.FileHandler("./mod-erate_impact.log")
 fh.setFormatter(formatter)
 logger.addHandler(fh)
@@ -67,9 +67,8 @@ def chat_tracker(server, port, nickname, secret, channel):
             sock.send(f"CAP REQ :twitch.tv/tags \n".encode('utf-8'))
             # Join Channel
             sock.send(f"JOIN #{channel}\n".encode('utf-8'))
+            logger.debug('Connected to Twitch Chat')
 
-            
-            logger.debug('Starting Chat Tracker')
             while True:
                 log_date = datetime.now()
                 log_date = log_date.strftime('%Y-%m-%d')
@@ -88,9 +87,14 @@ def chat_tracker(server, port, nickname, secret, channel):
                             chat_logger.write(str(time_tracker) + ' - ' + message.replace(';', ' - ').replace('#', ' - ') + '\n')
 
         except Exception as e:
-            logger.error(f'Unable to connect to Twitch Chat: {e}')
-            sleep(nap_time)
-            nap_time += 5
+            logger.warning(f'Unable to connect to Twitch Chat; taking a nap before re-trying in {nap_time} seconds: {e}')
+            # If it's timed out for 2 hours just exit the program
+            if nap_time == 720:
+                logger.error(f'Unable to connect to Twitch Chat, reached 2 hours worth of wait time: {e}')
+                exit(1)
+            else:
+                nap_time += 5
+                sleep(nap_time)
 
 def cleanup(num):
     while True:
@@ -113,141 +117,266 @@ def cleanup(num):
             sleep(3600)
 
 def get_pongs():
-    # Find all the PONGS
-    try:
-        # Directory Stuff
-        total_pongs = 0
-        file_path = './chat_logs/'
-        chat_files = os.listdir(file_path) 
-        for each_day in chat_files:
-            with open(file_path + each_day, mode='r') as chat_log:
-                for line in chat_log:
-                    if 'PONG' in line:
-                        total_pongs += 1
+    global pongs
+    startup = True
+    total_pongs = 0
+    line_number = 0
+    file_path = './chat_logs/'
+    chat_files = os.listdir(file_path)
+    log_date = datetime.now().strftime('%Y-%m-%d')
+
+    while True:
+        try:
+            # For the first run, calculate all the things
+            if startup:
+                for each_day in chat_files:
+                    
+                    with open(file_path + each_day, mode='r') as chat_log:
+                        for line in chat_log:
+                            # Count lines for "today"
+                            if log_date in each_day:
+                                line_number += 1
+                            # Count number of Pongs
+                            if 'PONG' in line:
+                                total_pongs += 1
+                    chat_log.close()
                 
-        results = str(total_pongs * 2)
-        logger.debug('Got Pongs')
-        return results
-    
-    except Exception as e:
-        logger.error(f'Unable to open chat log: {e}')
-        results = 'NULL'
-        return results
+            # Otherwise only track todays and append
+            else:
+                with open(file_path + log_date + '_twitch_chat.log') as chat_log:
+                    lines = chat_log.readlines()
+                    for message in lines[line_number:]:
+                        line_number += 1
+                        if 'PONG' in message:
+                            total_pongs += 1
+                chat_log.close()
+
+            # Provide updates, and sleep
+            pongs = str(total_pongs * 2) # Multiplied by 2 for Pings and Pongs 
+            sleep(120)
+
+        except Exception as e:
+            logger.error(f'Unable to open chat log: {e}')
+            pongs = 'NULL'
+            sleep(120)
 
 def statistics():
-    try:
-        file_path = './chat_logs/'
-        chat_files = os.listdir(file_path) 
-        total_days_tracked = len(chat_files)
-    except Exception as e:
-        logger.error('Unable to open files required for')
+    global totals
+    global mod_data
+    global mod_list
+    global line_number
+    startup = True
 
-    totals = {'Total Messages': 0, 'Reply Count': 0, 'Total Non-Sub Messages': 0, 'Total Sub Messages': 0, 'Total Days Tracked': 0}
-    mod_data = {}
-    mod_list = []
-    
-    try:
-        """
-        This chunk does a few things:
-        1. Pulls out moderators
-        2. Pulls out total messages (across all files)
-        3. Pulls out total messages per day
-        4. Pulls out the number of replies
-        5. Number of days tracked
-        """
-        for each_day in chat_files:
-            with open(file_path + each_day, mode='r') as chat_log:
-                # Setting things up to track total messages by date
-                if is_date(each_day.split('_')[0]) == True:
-                    chat_log_date = each_day.split('_')[0]
+    while True:
+        # Get todays date for the log_date
+        log_date = datetime.now().strftime('%Y-%m-%d')
+
+        # Get total number of days tracked
+        try:
+            file_path = './chat_logs/'
+            chat_files = os.listdir(file_path)
+        except Exception as e:
+            logger.error(f'Unable to list directory, check file permissions: {e}')
+
+        
+        try:
+            """
+            Grabs the following (in order):
+                - Total days tracked
+                - Total messages for date (sets var)
+                - Total Replies
+                - Total Sub Messages
+                - Total Non-Sub Messages
+            """
+            if startup == True:
+                for each_day in chat_files:
+                    with open(file_path + each_day, mode='r') as chat_log:
+                        if is_date(each_day.split('_')[0]) == True:
+                            chat_log_date = each_day.split('_')[0]
+                            totals['Total Days Tracked'] += 1 # Tracks days from the file listing
+                            totals['Total Messages for ' + chat_log_date] = 0 # Sets the total messages for X day to 0
+
+                        # Iterate through each line in the chat log
+                        for line in chat_log:
+                            # Get total messages for that day and add to overall messages
+                            if line.strip() != 'PONG' and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
+                                totals['Total Messages'] += 1
+                                totals['Total Messages for ' + chat_log_date] += 1
+
+                            # If the line starts with a date
+                            # Finds the moderators and add them to the Mod List
+                            if is_date(line.split(' - ')[0]) == True:
+                                if 'mod=1' in line and 'subscriber=' in line:
+                                    mod = line.split(' - ')[5].replace(':', '')
+                                    if mod not in mod_list and mod.lower() != 'turbo=0' and mod.lower() != 'emote-only=1' and mod.lower() != 'emote-only=0':
+                                        mod_list.append(mod)
+                            # If Twitch bulk sends data, and we can't append a date
+                            elif 'first-msg=' == line.split(' - ')[0] and 'subscriber=' in line and 'mod=1' in line and mod.lower() != 'emote-only=1' and mod.lower() != 'emote-only=0':
+                                mod = line.split(' - ')[4].replace(':', '')
+                                if mod not in mod_list and mod.lower() != 'turbo=0':
+                                    mod_list.append(mod)
+                            
+                            # Find the total number of replies
+                            if 'subscriber=' not in line and 'PONG' not in line and len(line) != 0 and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
+                                totals['Reply Count'] += 1
+                            
+                            # Find the total number of subscriber messages and total number of non-subscriber messages
+                            if 'subscriber=1' in line and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
+                                totals['Total Sub Messages'] += 1
+                            elif 'subscriber=0' in line and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
+                                totals['Total Non-Sub Messages'] += 1
+                    chat_log.close()
+            # Only grabs information for today's date since it has already ran once.
+            else:
+                # If the total for today doesn't exist, then create it
+                if 'Total Messages for ' + chat_log_date not in totals.keys():
                     totals['Total for ' + chat_log_date] = 0
-                    #totals[chat_log_date + '-Replies'] = 0
-                    totals['Total Days Tracked'] += 1
+                    line_number = 0
                 
-                for line in chat_log:
-                    # Get total Messages
+                with open(file_path + log_date + '_twitch_chat_log', mode='r') as chat_log:
+                    lines = chat_log.readlines()
+
+                    # Start reading from previously read line number onwards
+                    for message in lines[line_number:]:
+                        line_number += 1
+
+                    # Get total message for today and add to total message overall
                     if line.strip() != 'PONG' and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
                         totals['Total Messages'] += 1
                         totals['Total for ' + chat_log_date] += 1
-                        
+
                     # If the line starts with a date
+                    # Finds the NEW moderators and add them to the Mod List
                     if is_date(line.split(' - ')[0]) == True:
                         if 'mod=1' in line and 'subscriber=' in line:
                             mod = line.split(' - ')[5].replace(':', '')
                             if mod not in mod_list and mod.lower() != 'turbo=0' and mod.lower() != 'emote-only=1' and mod.lower() != 'emote-only=0':
                                 mod_list.append(mod)
-
-                    # If twitch bulk sends too much stuff and we can't append a date
+                    # If Twitch bulk sends data, and we can't append a date
                     elif 'first-msg=' == line.split(' - ')[0] and 'subscriber=' in line and 'mod=1' in line and mod.lower() != 'emote-only=1' and mod.lower() != 'emote-only=0':
                         mod = line.split(' - ')[4].replace(':', '')
                         if mod not in mod_list and mod.lower() != 'turbo=0':
                             mod_list.append(mod)
-                            
-                    # Otherwise while we are here let's get a count for how many replies
+                                
+                    # Find the total number of replies
                     if 'subscriber=' not in line and 'PONG' not in line and len(line) != 0 and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
                         totals['Reply Count'] += 1
-                        #totals[chat_log_date + '-Replies'] += 1
                     
-                    # General Stats
+                    # Find the total number of subscriber messages and total number of non-subscriber messages
                     if 'subscriber=1' in line and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
                         totals['Total Sub Messages'] += 1
                     elif 'subscriber=0' in line and conf['nickname'] not in line.strip() and 'tmi.twitch.tv' not in line.strip() and 'display-name=' not in line.strip() and 'emote-only=' not in line.strip():
                         totals['Total Non-Sub Messages'] += 1
-            chat_log.close()
-            
-    except Exception as e:
-        logger.error(f'Unable to find the mods: {e}')
-
-    # Setting up data fields
-
-    for mod in mod_list:
-        mod_data[mod] = {'Total Messages Sent': 0, 'Average Messages Per Day': 0, 'Days Active': 0, 'Last Active': '', 
-            'Average Time Between Messages (in mins)': 0, 'total_avg_list': [], 'total_avg_per_day': {}, 'Total Messages Per Day': {}, 'Average Per Day (in mins)': {}}
-
-
-        # Calculate average between messages sent
-        d1 = ''
-        d2 = ''
-        try:
-            for each_day in chat_files:
-                with open(file_path + each_day, mode='r') as chat_log:
-                    if is_date(each_day.split('_')[0]) == True:
-                        chat_log_date = each_day.split('_')[0]
-                        mod_data[mod]['total_avg_per_day'][chat_log_date] = []
-                        mod_data[mod]['Total Messages Per Day'][chat_log_date] = 0
-                    count = 0
-                    for line in chat_log:
-                        # Start counting how many messages the mod sent
-                        if mod in line:
-                            mod_data[mod]['Total Messages Sent'] += 1
-                            mod_data[mod]['Total Messages Per Day'][chat_log_date] += 1
-
-                        # Grab time delta information
-                        if mod in line and is_date(line.split(' - ')[0]) == True and count == 0:
-                            d1 = line.split(' - ')[0]
-                            count += 1
-                                
-                        elif mod in line and is_date(line.split(' - ')[0]) == True and count == 1:
-                            d2 = line.split(' - ')[0]
-                            count = 0
-                            results = deltaberg(d1, d2)
-                            mod_data[mod]['total_avg_list'].append(results)
-                            mod_data[mod]['total_avg_per_day'][chat_log_date].append(results)
                 chat_log.close()
+        except Exception as e:
+            logger.error(f'Unable to grab one (or all) of the following: Days tracked, Total Messages, Total replies, Total sub/non-sub messages - Reason: {e}')
 
-            # Calculate average messages per day
-            mod_data[mod]['Average Messages Per Day'] = round(mod_data[mod]['Total Messages Sent'] / total_days_tracked)
+        """
+        Gets the following information (in order):
+            - Sets up fields for mod_data dictionary 
+            - Keeps track of line numbers for 
+            - Counts how many messages a moderator sends
+            - 
+        """
+        for mod in mod_list:
 
-            # It works, but there probably is a better way to go about it...
+            # Sets up data fields for new mods
+            if mod not in mod_data.keys():
+                logger.debug(f'Setting up information for newly found mod - {mod}')
+                mod_data[mod] = {'Total Messages Sent': 0, 'Average Messages Per Day': 0, 'Days Active': 0, 'Last Active': '', 
+                                'Average Time Between Messages (in mins)': 0, 'total_avg_list': [], 'total_avg_per_day': {}, 'Total Messages Per Day': {}, 'Average Per Day (in mins)': {}}
+            
+            # Calculates the average time between messages sent
+            d1 = ''
+            d2 = ''
+            try:
+                if startup == True:
+                    for each_day in chat_files:
+                        with open(file_path + each_day, mode='r') as chat_log:
+                            # Setting up variables for the dictionary mod_data
+                            if is_date(each_day.split('_')[0]) == True:
+                                chat_log_date = each_day.split('_')[0]
+                                mod_data[mod]['total_avg_per_day'][chat_log_date] = []
+                                mod_data[mod]['Total Messages Per Day'][chat_log_date] = 0
+                        
+                            for line in chat_log:
+                                # If reading the file for today's date, start keeping track of lines
+                                if log_date in each_day:
+                                    line_number += 1
+
+                                # Count how many messages a moderator has sent
+                                if mod in line:
+                                    mod_data[mod]['Total Messages Sent'] += 1
+                                    mod_data[mod]['Total Messages Per Day'][chat_log_date] += 1
+                                
+                                # Calculate the time delta between two messages, then append them to the list
+                                count = 0
+                                if mod in line and is_date(line.split(' - ')[0]) == True and count == 0:
+                                    d1 = line.split(' - ')[0]
+                                    count += 1
+                                elif mod in line and is_date(line.split(' - ')[0]) == True and count == 1:
+                                    d2 = line.split(' - ')[0]
+                                    count = 0
+                                    results = deltaberg(d1, d2)
+                                    mod_data[mod]['total_avg_list'].append(results)
+                                    mod_data[mod]['total_avg_per_day'][chat_log_date].append(results)
+                        # Close the file
+                        chat_log.close()
+                # Only grabs information for today's date since it has already ran once.
+                else:
+                    with open(file_path + log_date + '_twitch_chat.log', mode='r') as chat_log:
+                        lines = chat_log.readlines()
+
+                        # Setting up variables for the dictionary mod_data
+                        if is_date(each_day.split('_')[0]) == True:
+                            chat_log_date = each_day.split('_')[0]
+                            mod_data[mod]['total_avg_per_day'][chat_log_date] = []
+                            mod_data[mod]['Total Messages Per Day'][chat_log_date] = 0
+                    
+                        for line in lines:
+                            # If reading the file for today's date, start keeping track of lines
+                            if log_date in each_day:
+                                line_number += 1
+
+                            # Count how many messages a moderator has sent
+                            if mod in line:
+                                mod_data[mod]['Total Messages Sent'] += 1
+                                mod_data[mod]['Total Messages Per Day'][chat_log_date] += 1
+                            
+                            # Calculate the time delta between two messages, then append them to the dictionary
+                            if mod in line and is_date(line.split(' - ')[0]) == True and count == 0:
+                                d1 = line.split(' - ')[0]
+                                count += 1
+                            elif mod in line and is_date(line.split(' - ')[0]) == True and count == 1:
+                                d2 = line.split(' - ')[0]
+                                count = 0
+                                results = deltaberg(d1, d2)
+                                mod_data[mod]['total_avg_list'].append(results)
+                                mod_data[mod]['total_avg_per_day'][chat_log_date].append(results)
+                    # Close the file
+                    chat_log.close()
+            except Exception as e:
+                logger.error(f'Unable to calculate one or more of the following: Time Deltas, Total Average Messages Per Day, Total Messages Per Day for Moderators - Reason: {e}')
+
+
+            # Calculate average messages sent per day
+            try:
+                mod_data[mod]['Average Messages Per Day'] = round(mod_data[mod]['Total Messages Sent'] / totals['Total Days Tracked'])
+            except Exception as e:
+                logger.error(f'Unable to calculate average messages sent per day: {e}')
+            
+            # Calculate days active, last day active, and time between messages per day
             try:
                 time_to_beat = 0
                 for key, value in mod_data[mod]['total_avg_per_day'].items():
                     mod_data[mod]['Average Per Day (in mins)'][key] = 0
-                    # Calculate days active
+                    
+                    # If the person has messaged before, add one to the days active
                     if len(value) != 0:
                         mod_data[mod]['Days Active'] += 1
-                        # Calculate "Last Active" date
-                        if key == datetime.today().strftime('%Y-%m-%d'):
+                    
+                        # Calculate Last Active Date
+                        if key == datetime.today.strftime('%Y-%m-%d'):
                             mod_data[mod]['Last Active'] = key
                         elif time_to_beat == 0:
                             time_to_beat = round(deltaberg(key, datetime.today().strftime('%Y-%m-%d'), other=True))
@@ -255,37 +384,35 @@ def statistics():
                         elif round(deltaberg(key, datetime.today().strftime('%Y-%m-%d'), other=True)) <= time_to_beat:
                             mod_data[mod]['Last Active'] = key
                             time_to_beat = round(deltaberg(key, datetime.today().strftime('%Y-%m-%d'), other=True))
-                                        
-                        # Calculate average time between messages (in mins) per day
-                        avg_for_day = 0
-                        for each_reply in value:
-                            avg_for_day += each_reply
-                        mod_data[mod]['Average Per Day (in mins)'][key] = round(round(avg_for_day) / len(value) / 60, 2)
-
-                        # Remove the information as it's no longer needed
+                    
             except Exception as e:
-                logger.error(f'Unable to calculate Average Per Day: {e}')
+                logger.error(f'Unable to calculate last date active: {e}')
 
+            # Calculate average time between messages in minutes *per day*
             try:
-                # Calculate overall Average and update 
+                avg_for_day = 0
+                for key, value in mod_data[mod]['total_avg_per_day'].items():
+                    for each_reply in value:
+                        avg_for_day += each_reply
+
+                    mod_data[mod]['Average Per Day (in mins)'][key] = round(round(avg_for_day) / len(value) /60, 2)
+            except Exception as e:
+                logger.error(f'Unable to calculate averages per day: {e}')
+            
+            # Calculate the overall Average and update
+            try:
                 total_reply_time = 0
                 for reply_time in mod_data[mod]['total_avg_list']:
                     total_reply_time += reply_time
                 mod_data[mod]['Average Time Between Messages (in mins)'] = round(round(total_reply_time / len(mod_data[mod]['total_avg_list'])) / 60, 2)
-
-                # Remove the information as it's no longer needed
-                mod_data[mod].pop('total_avg_list')
-                mod_data[mod].pop('total_avg_per_day')
-
-
             except Exception as e:
-                logger.error(f'Unable to calculate Average Time Between Messages: {e}')
+                logger.error(f'Unable to calculate the overall average between messages: {e}')
 
-        except Exception as e:
-            logger.error(f'Unable to calculate averages: {e}')
-    logger.debug('Got Statistics')
-    return (totals, mod_data)
-
+        # Make the data usable!
+        startup = False
+        global data
+        data = (totals, mod_data)
+        sleep(60)
 
 def is_date(string, fuzzy=False):
     # Return whether the string can be interpreted as a date.
@@ -306,7 +433,7 @@ def deltaberg(date1, date2, other=False):
         results = time_deltas.total_seconds() 
         return results
     else:
-         # Get the time in seconds between two messages
+        # Get the time in seconds between two messages
         date_format_str = '%Y-%m-%d'
         start = datetime.strptime(date1, date_format_str)
         end = datetime.strptime(date2, date_format_str)
@@ -346,13 +473,14 @@ def home_page():
     
     except Exception as e:
         logger.error(f'Unable to render home page: {e}')
-    
+
 # Mod Status Board
 @app.route("/mods", methods=['GET'])
 def moderator():
     global conf
     global pongs
     global data
+    global startup
     totals = data[0]
     mod_stats = data[1]
     try:
@@ -381,15 +509,13 @@ if __name__ == "__main__":
         global conf
         global pongs
         global data
+
+        totals = {'Total Messages': 0, 'Reply Count': 0, 'Total Non-Sub Messages': 0, 'Total Sub Messages': 0, 'Total Days Tracked': 0}
+        mod_data = {}
+        mod_list = []
+        line_number = 0
+
         conf = read_yaml()
-        pongs = get_pongs()
-        data = statistics()
-        sched = BackgroundScheduler()
-        # RUN EVER 2 MINS instead of every time a refresh happens
-        # No one said I was great at coding :) But it works!
-        sched.add_job(get_pongs, 'interval', seconds=120)
-        sched.add_job(statistics, 'interval', seconds=120)
-        sched.start()   
 
         # Backgrounding the Cleanup Function
         clean_th = threading.Thread(target=cleanup, args=(conf['num_days_saved'],))
@@ -398,8 +524,19 @@ if __name__ == "__main__":
         # Backgrounding the Chat Tracker Function in it's own thread
         chat_th = threading.Thread(target=chat_tracker, args=(conf['server'], conf['port'], conf['nickname'], conf['oauth_secret'], conf['channel']))
         chat_th.start()
+
+        # Backgrounding Statistics Function
+        stats_th = threading.Thread(target=statistics)
+        stats_th.start()
+
+        # Backgrounding Pongs Function
+        pongs_th = threading.Thread(target=get_pongs)
+        pongs_th.start()
         
+        # Set back to false after starting up
+        startup = False
         serve(app, host='0.0.0.0', port=8080, threads=2)
+
 
     except KeyboardInterrupt:
         exit()

@@ -5,7 +5,7 @@ A Twitch Moderator Tracker
 This was designed to help Twitch Streamers keep track of how interactive their Moderators are in their respective community. I stole the idea from [Venalis](https://twitch.tv/venalis) when he had stated he was wanting something that did this exact thing. I hope that it will be useful to any streamer looking to keep track of the information provided.
 
 ## Home Page 
-The top left where it states "Venalis" is actually the channel name. This will change depending on what Twitch Chat your following.
+The top left where it states "Venalis" is actually the channel name. This will change depending on what Twitch Chat you set within the configuration file.
 ![Home Page](./IMAGES/home.png)
 
 ## Mod Overview Page
@@ -59,7 +59,7 @@ I would highly advise running this on a [RaspberryPi](https://www.raspberrypi.co
 
 ### Using the provided Executable 
 
-1. To setup using the provided executable, download and extract the `Moderate-Impact.zip` file into your prefered location. 
+1. To setup using the provided executable, download and extract the `Moderate-Impact.zip` file into your preferred location. 
 2. Execute the binary **SEE NOTE BELOW**
 3. There will be no application window that opens up, it will just background its-self. Since it's essentially a web-server you can now open up your preferred web browser and go to `http://localhost:8080` and access the web page!
 3. If you would like it to start when you start your computer follow [these instructions.](https://www.howtogeek.com/208224/how-to-add-programs-files-and-folders-to-system-startup-in-windows-8.1/)
@@ -83,3 +83,4 @@ I would highly advise running this on a [RaspberryPi](https://www.raspberrypi.co
 ### Future Additions
   * I would like to get a logo for this at some point... 
   * I have most of the information built out to start tracking totals per day, and average time between messages per day for each Moderator. I'd like to build out a page per Moderator that you can view the history for each Mod.
+  * For fun, maybe create a word cloud with all of the words that exist?...
