@@ -1,6 +1,9 @@
 import yaml
 import socket
 import re
+import requests
+import chardet
+from io import BytesIO
 from datetime import datetime
 import logging
 from os.path import exists
@@ -100,6 +103,29 @@ def chat_tracker(server, port, nickname, secret, channel):
             else:
                 nap_time += 5
                 sleep(nap_time)
+
+
+def get_auth_token():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 3000))
+        s.listen()
+        conn, addr = s.accept()
+        with conn:
+            print('Connected by', addr)
+            while True:
+                data = conn.recv(4096)
+                print(fromhex(data))
+                if not data:
+                    break
+                #conn.sendall(data)
+
+
+    #r = requests.get('https://id.twitch.tv/oauth2/authorize?response_type=code&client_id=tev5matdoe8saq7ukb0dk6n5wh1n1t&redirect_uri=https://127.0.0.1:3000&scope=chat:read')
+    
+
+
+
 if __name__ == '__main__': 
     config = read_yaml()
-    chat_tracker(server=config['server'], port=config['port'], nickname=config['nickname'], secret=config['oauth_secret'], channel=config['channel'])
+    #chat_tracker(server=config['server'], port=config['port'], nickname=config['nickname'], secret=config['oauth_secret'], channel=config['channel'])
+    get_auth_token()

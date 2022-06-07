@@ -2,3 +2,5 @@ venv/
 chat_logs/*.log
 mod-erate_impact.log
 settings.yaml
+database.db
+notes.md
