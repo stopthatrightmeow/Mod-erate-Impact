@@ -5,11 +5,13 @@ import yaml
 import os
 import re
 import sqlite3
+import requests
 import pandas as pd
 from dateutil.parser import parse
+from urllib.parse import parse_qs, urlencode
 from waitress import serve # Waitress for production server VS Flask
 from os.path import exists
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from datetime import datetime, timedelta
 from time import sleep
 
@@ -45,80 +47,94 @@ def read_yaml():
         logger.error('Unable to find required file: "settings.yaml"')
         exit(1)
 
-# Connect to SQL Database
-def sql_connection():
-    logger.info('Preparing to init the database.')
-    # Connect to the database file
-    try:
-        conn = sqlite3.connect('./database.db')
-        logger.info('Successfully connected to database file.')
-    except Exception as e:
-        logger.error(f'Unable to connect to local database file: {e}')
-        exit(1)
-        
-    return conn
-
-# init the SQL database
-def init_database(conn=sql_connection()):
-    # Create the required tables if they don't already exist
-    try:
-        cursor = conn.cursor()
-        
-        # Create Users table
-        cursor.execute("CREATE TABLE IF NOT EXISTS users (username TEXT, moderator INT, subscriber INT, turbo INT, messages_sent INT)")
-        logger.debug('Created table "users".')
-        
-        # Create Messages table
-        cursor.execute("CREATE TABLE IF NOT EXISTS messages (username TEXT, date TEXT, message TEXT, first_message INT)")
-        logger.debug('Created table "messages".')
-        
-        conn.close()
-        logger.info('Successfully created required tables!')
-        
-    except Exception as e:
-        logger.error(f'Unable to init database: {e}')
-        exit(1)
-   
-    # Reset YAML file
-    with open('./settings.yaml', mode='r') as file:
-        config = yaml.safe_load(file)
-        config['first_run'] = False
-        file.close()
-        
-    try:
-        logger.debug('Deleting, and re-creating settings.yaml.')
-        os.remove('./settings.yaml')
-        with open('./settings.yaml', mode='w') as file:
-            yaml.dump(config, file)
-            file.close()
-        logger.info('Updated settings file.')
-        logger.info('Please restart the application!')
-        exit(0)
-
-    except Exception as e:
-        logger.error(f'Unable to update settings file: {e}')
-        exit(1)
+# URL For Application Authorization with Twitch.
+code = None
+@app.route("/authorize", methods=['GET'])
+def twitch_auth(client_id, redirect_uri):
+    global code
+    request_payload = {
+        'client_id': client_id,
+        'force_verify': 'false',
+        'redirect_uri': redirect_uri,
+        'response_type': 'code',
+        'scope': 'chat:read'
+    }
+    encoded_payload = urlencode(request_payload)
+    url = 'https://id.twitch.tv/oauth2/authorize?' + encoded_payload
+    code = parse_qs(request.full_path)
     
-def update_database(conn=sql_connection()):
-    # Update Users Table
-    username = 'potatoe'
-    mod = 1
-    subscriber = 1
-    turbo = 1
-    msg = 13
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO users VALUES (?, ?, ? ,? ,?)", (username, mod, subscriber, turbo, msg))
-    conn.commit()
-    # Update Messages Table
-            
-    # Commit to the database
-            
-    # Read table
-    cursor.execute("SELECT * from users WHERE moderator == 1")   
-    print(cursor.fetchone())
+    try: 
+        # If we have an auth code, pass it along to the get_token function
+        if code['/authorize?code'][0]:
+            get_token(code=code['/authorize?code'][0])
+    except:
+        pass
+    # Render the page, for the user to click the link to auth the app
+    return render_template('auth.html', url=url)
+
+access_token = None
+refresh_token = None
+def get_token(code, client_id, client_secret, redirect_uri):
+    global access_token
+    global refresh_token
+    
+    url = 'https://id.twitch.tv/oauth2/token'
+    request_payload = {
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'redirect_uri': redirect_uri
+    }
+    
+    if code:
+        request_payload['grant_type'] = 'authorization_code'
+        request_payload['/authorize?code'][0] = code
+    elif refresh_token:
+        request_payload['grant_type'] = 'refresh_token'
+        request_payload['refresh_token'] = refresh_token
+
+    logger.info('')
+    r = requests.post(url, data=request_payload).json()
+    try:
+        access_token = r['access_token']
+        refresh_token = r['refresh_token']
+    except Exception as e:
+        logger.error(f'Unexpected response upon redemption of auth code: {r}, {e}')
+        
+def validate_token():
+    logger.info('Validating token.')
+    url = 'https://id.twitch.tv/oauth2/validate'
+    r = requests.get(url, headers={'Authorization:' f'Oauth {access_token}'})
+    if r.status_code == 200:
+        logger.info('Access token is still valid.')
+        return True
+    elif r.status_code == 401:
+        logger.info('Access token invalid.')
+        return False
+    else:
+        logger.error(f'Unrecognized status code on validation: {r.status_code}')
+        exit(1)
+
+def read_tokens():    
+
+def write_tokens():
+    
+def auth_flow():
+    if read_tokens(): # Code exists
+        if not validate_token():
+            get_token()
+        else:
+            twitch_auth() # User login auth
+            get_token()
+    write_tokens()
+    
+    return access_token
+    
+
         
 if __name__ == "__main__":
     config = read_yaml()
-    if config['first_run'] == True:
-        init_database()
-    update_database(conn=sql_connection())
+    redirect_uri = 'https://' + config['srv_domain'] + ':' + config['srv_port'] + '/authorize'
+    twitch_auth(client_id=config['client_id'], redirect_uri=redirect_uri)
+    
+    #serve(app, host='localhost', port=3000, threads=2, url_scheme='https')
+    app.run(ssl_context="adhoc", host=config['srv_domain'], port=config['srv_port'])

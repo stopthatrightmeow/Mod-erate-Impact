@@ -3,7 +3,7 @@ channel: channel_name_in_lowercase
 # Your Twitch Username
 nickname: your_twitch_username
 # Setup via twitch dev console
-client_id: 'client_id'
+client_id: 'tev5matdoe8saq7ukb0dk6n5wh1n1t'
 client_secret: 'client_secret'
 # How many days would you like to track
 num_days_saved: 30
