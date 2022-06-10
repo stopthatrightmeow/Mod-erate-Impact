@@ -1,10 +1,8 @@
 # Your Twitch Channel
-channel: channel_name_in_lowercase
-# Your Twitch Username
-nickname: your_twitch_username
+channel: venalis
 # Setup via twitch dev console
 client_id: 'tev5matdoe8saq7ukb0dk6n5wh1n1t'
-client_secret: 'client_secret'
+client_secret: ''
 # How many days would you like to track
 num_days_saved: 30
 # Probably just leave alone :) 
@@ -13,3 +11,7 @@ server: irc.chat.twitch.tv
 # Server Settings
 srv_domain: localhost
 srv_port: 3000
+
+# Token Information
+access_token: ''
+refresh_token: ''

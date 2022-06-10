@@ -87,7 +87,7 @@ def init_database(conn=sql_connection()):
         logger.info('Updated settings file.')
         logger.info('Please restart the application!')
         exit(0)
-
+¡
     except Exception as e:
         logger.error(f'Unable to update settings file: {e}')
         exit(1)
