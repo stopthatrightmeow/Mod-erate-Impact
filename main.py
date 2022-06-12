@@ -1,6 +1,12 @@
 import logging
+from os import access
 import yaml
 import requests
+import socket
+import threading
+import re
+from time import sleep
+from datetime import datetime
 from urllib.parse import parse_qs, urlencode
 from os.path import exists
 from flask import Flask, render_template, redirect, url_for, request
@@ -45,7 +51,7 @@ def read_yaml():
 @app.route("/", methods=['GET'])
 def index():
     global code
-
+    global conf
     # If the code var isn't populated, redirect the user to the twitch auth link
     if code is None:
         return redirect(url_for("twitch_auth_link"))
@@ -69,7 +75,7 @@ def twitch_auth_link():
         'force_verify': 'false',
         'redirect_uri': redirect_uri,
         'response_type': 'code',
-        'scope': 'chat:read'
+        'scope': 'chat:edit chat:read'
     }
     
     encoded_payload = urlencode(request_payload)
@@ -140,15 +146,93 @@ def validate_token():
     except Exception as e:
         logger.error(f'Unable to validate twitch OAuth tokens: {e}')    
 
-def oauth_flow(check=True):
-    if validate_token() == False and check == True:
-        get_tokens()
-    else:
-        validate_token()
-        
-    
+def twitch_validation():
+    while True:
+        if validate_token() == False:
+            logger.debug('Getting new token.')
+            get_tokens()
+            return True
+        elif validate_token() == True:
+            logger.debug('Token still valid.')
+            sleep(300)
+            return True
+        else:
+            logger.debug('Other?...')
+            sleep(3)
+            return False
+
+
+def chat_tracker(server, port, nickname, channel):
+    global access_token
+    nap_time = 0
+    # Fancy regex to cut out all the extra garbage
+    # https://pythex.org/ Awesome website!
+    # This long mess is used to cleanup the chat stuff for tracking subs/nonsubs/and mods
+    pattern = r'((@badge-info=.+?)(?=first-msg))|((flags=.+?)(?=mod))|((room-id=.+?)(?=;);)|((room-id=.+?)(?=;);)|((tmi-sent-ts=.+?)(?=turbo))|((user-id=.+?)(?=user-type=))|((!.+?)(?=#))|((moderator.+?)(?=mod))|((user-type=.+?)((?=:)|(?=mod)))|((reply-parent-display-name=.+?)(?=:))|((@badge-info=.+?)(?=display-name=))|((emotes=.+?)(?=mod=))|((msg-param-sub-plan-.+?)(?= :))|((msg-param-origin-id=.+?)(?=;msg-param-recipient-display-name=))|(msg-param-recipient-id=.+?)(?=PRIVMSG)|((.*CLEARCHAT.*)|(.*USERNOTICE.*)).+?'
+    auth_failure = r'\W(:Login authentication failed)'
+
+    while True:
+        try:
+            # Connect to the server
+            sock = socket.socket()
+            sock.connect((server, port))
+
+            # Send Authentication/Nickname
+            sock.send(f"PASS oauth:{access_token}\n".encode('utf-8'))
+            sock.send(f"NICK {nickname}\n".encode('utf-8'))
+
+            # Required to grab moderator information
+            # Reference: https://dev.twitch.tv/docs/irc/capabilities
+            sock.send(f"CAP REQ :twitch.tv/commands \n".encode('utf-8'))
+            sock.send(f"CAP REQ :twitch.tv/tags \n".encode('utf-8'))
+            sock.send(f"CAP REQ :twitch.tv/membership \n".encode('utf-8'))
+            # Join Channel
+            sock.send(f"JOIN #{channel}\n".encode('utf-8'))
+            logger.debug('Connected to Twitch Chat')
+
+            while True:
+                # Time formatting
+                log_date = datetime.now()
+                log_date = log_date.strftime('%Y-%m-%d')
+                with open('./chat_logs/' + log_date + '_twitch_chat.log', mode='a+') as chat_logger:
+                    # Reading in what the IRC sent us
+                    resp = sock.recv(2048).decode('utf-8')
+                    msg_recv_time = datetime.now()
+                    msg_recv_time = msg_recv_time.strftime('%Y-%m-%d %H:%M:%S.%f')
+                    chat_logger.write(resp.strip() + '\n')
+                    if ':Login authentication failed' in resp.strip():
+                        raise Exception('Error Login Authentication failed with Twitch IRC. Have you authenticated with Twitch yet?...')
+                    if resp.startswith('PING'):
+                        chat_logger.write('PONG\n')
+                        sock.send("PONG\n".encode('utf-8'))
+
+        except Exception as e:
+            logger.warning(f'Unable to connect to Twitch Chat; taking a nap before re-trying in {nap_time} seconds: {e}')
+            
+            # If it's timed out for 2 hours just exit the program
+            if nap_time == 720:
+                logger.error(f'Unable to connect to Twitch Chat, reached 2 hours worth of wait time: {e}')
+                exit(1)
+            else:
+                nap_time += 5
+                sleep(nap_time)
+                        
+
+
     
 if __name__ == '__main__':
     global conf
-    conf = read_yaml()  
+    conf = read_yaml()
+
+    # Start and re-auth 
+    twitch_validation_th = threading.Thread(target=twitch_validation)
+    twitch_validation_th.start()
+    valid = twitch_validation_th.join()
+    logger.debug(f'Twitch Validation: {valid}')
+    chat_th = threading.Thread(target=chat_tracker, args=(conf['server'], conf['port'], conf['nickname'], conf['channel']))
+
+    #while twitch_validation() and chat_th.is_alive() is False and code is not None:
+    #    chat_th.start()
+
+    
     app.run(ssl_context="adhoc", host='127.0.0.1', port=3000)
