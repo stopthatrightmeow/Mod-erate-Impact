@@ -66,16 +66,23 @@
                 </tr>
             </table>
         </div>
+        <h1>Daily Statistics</h1>
         <div class="gen_stats_table">
             <table>
                 <tr>
                     <th><h3>Date</h3></th>
-                    <th><h3>Count</h3></th>
+                    <th><h3>Total Messages</h3></th>
+                    <th><h3>Total Sub Messages</h3></th>
+                    <th><h3>Total Non-Sub Messages</h3></th>
+                    <th><h3>Total Replies</h3></th>
                 </tr>
                 <tr>
                     {% for key, value in gen_stats.items() %}
-                        <td><p>{{key}}</p></td>
-                        <td><p>{{value}}</p></td>
+                        <td><p>{{ key }}</p></td>
+                        <td><p>{{ value['Total Messages'] }}</p></td>
+                        <td><p>{{ value['Total Sub Messages'] }}</p></td>
+                        <td><p>{{ value['Total Non-Sub Messages'] }}</p></td>
+                        <td><p>{{ value['Reply Count'] }}</p></td>
                 </tr>
             {% endfor %}
             </table>

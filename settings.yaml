@@ -1,6 +1,7 @@
 # Your Twitch Channel
-channel: venalis
+channel: 
 # Setup via twitch dev console
+nickname: mynameissuperawesome
 client_id: 'tev5matdoe8saq7ukb0dk6n5wh1n1t'
 client_secret: ''
 # How many days would you like to track
@@ -11,7 +12,3 @@ server: irc.chat.twitch.tv
 # Server Settings
 srv_domain: localhost
 srv_port: 3000
-
-# Token Information
-access_token: ''
-refresh_token: ''

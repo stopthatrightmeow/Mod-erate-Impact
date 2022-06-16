@@ -95,7 +95,7 @@ body {
 .gen_stats_table h3 {
   text-align: center;
   font-family: 'Roboto', sans-serif;
-  font-size: 32px;
+  font-size: 22px;
 }
 
 .gen_stats_table table {
@@ -105,7 +105,7 @@ body {
   border-spacing: 5px;
   padding: 10px;
   word-spacing: 3px;
-  width: 55%;
+  width: 100%;
 }
 
 #footer {

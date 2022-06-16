@@ -509,7 +509,6 @@ if __name__ == "__main__":
         global conf
         global pongs
         global data
-
         totals = {'Total Messages': 0, 'Reply Count': 0, 'Total Non-Sub Messages': 0, 'Total Sub Messages': 0, 'Total Days Tracked': 0}
         mod_data = {}
         mod_list = []
