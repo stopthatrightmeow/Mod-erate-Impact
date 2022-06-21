@@ -1,14 +1,13 @@
 # Your Twitch Channel
-channel: 
+channel: 'CHANNEL_NAME_HERE'
 # Setup via twitch dev console
-nickname: mynameissuperawesome
-client_id: 'tev5matdoe8saq7ukb0dk6n5wh1n1t'
-client_secret: ''
+nickname: 'YOUR_TWITCH_USERNAME/BOTACCOUNT_HERE'
+client_id: 'CLIENT ID HERE'
+client_secret: 'CLIENT SECRET HERE'
 # How many days would you like to track
 num_days_saved: 30
+# Server Settings
+redirect_uri: 'https://127.0.0.1:3000/'
 # Probably just leave alone :) 
 port: 6667
 server: irc.chat.twitch.tv
-# Server Settings
-srv_domain: localhost
-srv_port: 3000
